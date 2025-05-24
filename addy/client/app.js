@@ -66,19 +66,30 @@ function dayOfTheWeek(day, month, year) {
 // Function that fetches and displays the data from our FastAPI backend
 async function fetchWeatherData() {
     try {
+        console.log(`Fetching weather data for: ${cityInput}`);
+        
         // Show loading state
         temp.innerHTML = "Loading...";
         conditionOutput.innerHTML = "Fetching weather data...";
+        nameOutput.innerHTML = "Loading...";
         
         // Fetch data from our FastAPI backend
         const response = await fetch(`${API_BASE_URL}/weather/simple/${encodeURIComponent(cityInput)}`);
         
+        console.log(`Response status: ${response.status}`);
+        
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+            throw new Error(`HTTP ${response.status}: ${errorData.detail || response.statusText}`);
         }
         
         const data = await response.json();
-        console.log('Weather data:', data);
+        console.log('Weather data received:', data);
+        
+        // Validate data structure
+        if (!data.current || !data.location) {
+            throw new Error("Invalid weather data format received");
+        }
         
         // Update temperature and condition
         temp.innerHTML = data.current.temp_c + "&#176;";
@@ -98,9 +109,14 @@ async function fetchWeatherData() {
         // Add the name of the city
         nameOutput.innerHTML = data.location.name;
         
-        // Set weather icon based on condition code
-        const iconId = data.current.condition.icon.substr("//cdn.weatherapi.com/weather/64x64/".length);
-        icon.src = "./icons/" + iconId;
+        // Set weather icon
+        const iconUrl = data.current.condition.icon;
+        if (iconUrl.includes("cdn.weatherapi.com")) {
+            const iconId = iconUrl.split("/").pop();
+            icon.src = "./icons/" + iconId;
+        } else {
+            icon.src = "./icons/day/113.png"; // Default icon
+        }
         
         // Add the weather details
         cloudOutput.innerHTML = data.current.cloud + "%";
@@ -123,9 +139,19 @@ async function fetchWeatherData() {
         // Fade in the page once all is done
         app.style.opacity = "1";
         
+        console.log("Weather data updated successfully");
+        
     } catch (error) {
         console.error('Error fetching weather data:', error);
-        alert('City not found or weather data unavailable. Please try again.');
+        
+        // Show error in UI
+        temp.innerHTML = "Error";
+        conditionOutput.innerHTML = "Unable to load weather data";
+        nameOutput.innerHTML = cityInput;
+        
+        // Show user-friendly message
+        alert(`Unable to fetch weather data for "${cityInput}". Please check the city name and try again.`);
+        
         app.style.opacity = "1";
     }
 }

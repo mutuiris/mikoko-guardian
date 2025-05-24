@@ -1,8 +1,26 @@
 import requests
 from typing import Dict, Optional
 import os
+import sys
 from datetime import datetime
-from .config import Config
+from pathlib import Path
+
+# Handle imports properly
+try:
+    from .config import Config
+except ImportError:
+    # If relative import fails, try absolute import
+    try:
+        from config import Config
+    except ImportError:
+        # If that fails too, create a minimal config
+        print("Warning: Using fallback config")
+        class Config:
+            WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '')
+            WEATHER_API_BASE_URL = os.getenv('WEATHER_API_BASE_URL', 'https://api.weatherapi.com/v1/current.json')
+            WEATHER_FORECAST_URL = os.getenv('WEATHER_FORECAST_URL', 'https://api.weatherapi.com/v1/forecast.json')
+            API_TIMEOUT_SECONDS = int(os.getenv('API_TIMEOUT_SECONDS', '10'))
+            MAX_FORECAST_DAYS = int(os.getenv('MAX_FORECAST_DAYS', '10'))
 
 def fetch_weather_data(location: str) -> Dict:
     """
@@ -15,18 +33,24 @@ def fetch_weather_data(location: str) -> Dict:
         Dict: Structured weather information including temperature, humidity, rainfall, and environmental indicators.
     """
     try:
+        print(f"WEATHER_TOOL: Starting fetch for {location}")
+        
         # Validate configuration
         if not Config.WEATHER_API_KEY:
+            error_msg = "Weather API key not configured. Please check your .env file."
+            print(f"WEATHER_TOOL ERROR: {error_msg}")
             return {
                 "status": "error",
-                "error_message": "Weather API key not configured. Please check your .env file."
+                "error_message": error_msg
             }
         
         # Validate input
         if not location or not isinstance(location, str):
+            error_msg = "Please provide a valid location name."
+            print(f"WEATHER_TOOL ERROR: {error_msg}")
             return {
                 "status": "error",
-                "error_message": "Please provide a valid location name."
+                "error_message": error_msg
             }
         
         # Prepare API request
@@ -36,10 +60,17 @@ def fetch_weather_data(location: str) -> Dict:
             "aqi": "yes"
         }
         
+        print(f"WEATHER_TOOL: Making API request to: {Config.WEATHER_API_BASE_URL}")
+        print(f"WEATHER_TOOL: Location: {location}")
+        
         response = requests.get(Config.WEATHER_API_BASE_URL, params=params, timeout=Config.API_TIMEOUT_SECONDS)
+        
+        print(f"WEATHER_TOOL: Response status: {response.status_code}")
+        
         response.raise_for_status()
         
         data = response.json()
+        print(f"WEATHER_TOOL: Successfully fetched data for {data['location']['name']}")
         
         # Extract and structure relevant weather data
         weather_info = {
@@ -97,27 +128,36 @@ def fetch_weather_data(location: str) -> Dict:
                 "gb_defra_index": data["current"]["air_quality"].get("gb-defra-index", "N/A")
             }
         
+        print(f"WEATHER_TOOL: Successfully processed data for {location}")
         return weather_info
         
     except requests.exceptions.RequestException as e:
+        error_msg = f"Failed to fetch weather data: Network error - {str(e)}"
+        print(f"WEATHER_TOOL REQUEST ERROR: {error_msg}")
         return {
             "status": "error",
-            "error_message": f"Failed to fetch weather data: Network error - {str(e)}"
+            "error_message": error_msg
         }
     except requests.exceptions.HTTPError as e:
+        error_msg = f"Weather API error: {str(e)}"
+        print(f"WEATHER_TOOL HTTP ERROR: {error_msg}")
         return {
             "status": "error", 
-            "error_message": f"Weather API error: {str(e)}"
+            "error_message": error_msg
         }
     except KeyError as e:
+        error_msg = f"Unexpected weather data format: Missing field {str(e)}"
+        print(f"WEATHER_TOOL KEY ERROR: {error_msg}")
         return {
             "status": "error",
-            "error_message": f"Unexpected weather data format: Missing field {str(e)}"
+            "error_message": error_msg
         }
     except Exception as e:
+        error_msg = f"Location '{location}' not found or weather data unavailable: {str(e)}"
+        print(f"WEATHER_TOOL GENERAL ERROR: {error_msg}")
         return {
             "status": "error",
-            "error_message": f"Location '{location}' not found or weather data unavailable."
+            "error_message": error_msg
         }
 
 def get_weather_forecast(location: str, days: int = 3) -> Dict:
