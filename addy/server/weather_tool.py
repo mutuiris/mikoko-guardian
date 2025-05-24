@@ -1,7 +1,6 @@
 import requests
-from typing import Dict, Optional
 import os
-import sys
+from typing import Dict, Optional
 from datetime import datetime
 from pathlib import Path
 
@@ -204,17 +203,15 @@ def get_weather_forecast(location: str, days: int = 3) -> Dict:
         }
         
         for day in data["forecast"]["forecastday"]:
-            day_info = {
+            daily_forecast = {
                 "date": day["date"],
                 "max_temp_c": day["day"]["maxtemp_c"],
                 "min_temp_c": day["day"]["mintemp_c"],
-                "avg_humidity": day["day"]["avghumidity"],
-                "total_precipitation_mm": day["day"]["totalprecip_mm"],
-                "max_wind_kph": day["day"]["maxwind_kph"],
                 "condition": day["day"]["condition"]["text"],
-                "uv_index": day["day"]["uv"]
+                "chance_of_rain": day["day"]["daily_chance_of_rain"],
+                "total_precipitation_mm": day["day"]["totalprecip_mm"]
             }
-            forecast_info["daily_forecasts"].append(day_info)
+            forecast_info["daily_forecasts"].append(daily_forecast)
             
         return forecast_info
         

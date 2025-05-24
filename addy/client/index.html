@@ -61,6 +61,39 @@
                     <span class="wind">8km/h</span>
                 </li>
             </ul>
+
+            <!-- NEW AI INSIGHTS SECTION -->
+            <div class="ai-insights" id="aiInsights">
+                <h4>
+                    <i class="fas fa-robot"></i> 
+                    AI Weather Insights
+                    <span class="ai-status" id="aiStatus">🤖</span>
+                </h4>
+                <div class="insights-content" id="insightsContent">
+                    <p class="loading-insights">Loading AI insights...</p>
+                </div>
+            </div>
+
+            <!-- NEW AI CHAT SECTION -->
+            <div class="ai-chat" id="aiChat">
+                <h4>
+                    <i class="fas fa-comments"></i> 
+                    Chat with Addy
+                    <button class="chat-toggle" id="chatToggle">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                </h4>
+                <div class="chat-container" id="chatContainer">
+                    <div class="chat-messages" id="chatMessages">
+                    </div>
+                    <form class="chat-input-form" id="chatForm">
+                        <input type="text" class="chat-input" id="chatInput" placeholder="Ask Addy about weather..." maxlength="200">
+                        <button type="submit" class="chat-send" id="chatSend">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -1,21 +1,21 @@
-import google.generativeai as genai
 import json
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from datetime import datetime
-import asyncio
 
 # Configure Gemini
 try:
-    from config import Config
+    from .config import Config
+    import google.generativeai as genai
+
     genai.configure(api_key=Config.GOOGLE_API_KEY)
-    
-    # Create the model
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-2.0-flash-exp')
     GEMINI_AVAILABLE = True
-    print("✅ Gemini Pro AI initialized successfully")
+    print("✅ Gemini initialized successfully")
 except Exception as e:
     print(f"❌ Gemini initialization failed: {e}")
     GEMINI_AVAILABLE = False
+
+AI_AGENT_AVAILABLE = GEMINI_AVAILABLE
 
 class FullAIAddyAgent:
     """Full AI-powered Addy Weather Agent using Gemini Pro"""
@@ -158,12 +158,28 @@ Response:"""
             "locations_discussed": list(set([entry.get("location") for entry in self.conversation_history if entry.get("location")]))
         }
 
-# Create global AI agent instance
-ai_addy = FullAIAddyAgent()
+if AI_AGENT_AVAILABLE:
+    # Create global AI agent instance
+    ai_addy = FullAIAddyAgent()
+else:
+    ai_addy = None
 
 async def chat_with_ai_addy(message: str, location: Optional[str] = None) -> Dict:
     """Enhanced AI chat function"""
     
+    if not AI_AGENT_AVAILABLE:
+        # single fallback message
+        return {
+            "status": "success",
+            "response": (
+                f"I'd love to help with weather information for {location}! "
+                "However, my AI capabilities are currently limited. "
+                "I can still provide basic weather data though."
+            ),
+            "ai_powered": False,
+            "location": location
+        }
+
     # Get weather data if location is provided
     weather_data = None
     if location:

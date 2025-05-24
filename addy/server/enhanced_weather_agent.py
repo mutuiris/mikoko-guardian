@@ -264,6 +264,7 @@ class EnhancedAddyAgent:
         
         return recommendations
     
+    # Complete the _suggest_contextual_activities method
     def _suggest_contextual_activities(self, temp: float, condition: str, 
                                      wind: float, is_day: bool, location: str) -> List[str]:
         """Suggest activities based on weather and location context"""
@@ -300,25 +301,17 @@ class EnhancedAddyAgent:
         else:
             activities.extend([
                 f"🏠 Indoor activities recommended",
-                f"🧘 Indoor yoga or meditation",
-                f"🍳 Cooking or baking"
+                f"🎵 Indoor music or podcasts"
             ])
         
         # Weather condition activities
         if "clear" in condition or "sunny" in condition:
-            activities.extend([
-                "📸 Perfect lighting for photography",
-                "🌻 Garden visits or outdoor markets"
-            ])
+            activities.append("☀️ Perfect for outdoor photography")
         elif "cloudy" in condition and "rain" not in condition:
-            activities.extend([
-                "🎨 Great diffused lighting for art",
-                "🏛️ Outdoor architecture tours"
-            ])
+            activities.append("🌫️ Great for outdoor walks")
         elif "rain" in condition:
             activities.extend([
-                "☔ Cozy indoor activities",
-                "📚 Reading by the window",
+                "☔ Indoor activities recommended",
                 "🎵 Indoor music or podcasts"
             ])
         
@@ -418,6 +411,7 @@ class EnhancedAddyAgent:
             
         except Exception:
             return {"level": "Unknown", "advice": "Air quality data unavailable"}
+        
     
     def _create_intelligent_summary(self, weather_data: Dict, comfort: str, is_day: bool) -> str:
         """Create an intelligent, conversational weather summary"""

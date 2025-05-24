@@ -13,6 +13,16 @@ const search = document.querySelector('.search');
 const btn = document.querySelector('.submit');
 const cities = document.querySelectorAll('.city');
 
+// AI UI Elements
+const aiInsights = document.getElementById('aiInsights');
+const insightsContent = document.getElementById('insightsContent');
+const aiStatus = document.getElementById('aiStatus');
+const chatContainer = document.getElementById('chatContainer');
+const chatMessages = document.getElementById('chatMessages');
+const chatForm = document.getElementById('chatForm');
+const chatInput = document.getElementById('chatInput');
+const chatToggle = document.getElementById('chatToggle');
+
 // API base URL - FastAPI server
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -22,6 +32,8 @@ let cityInput = "Nairobi";
 // Enhanced global state
 let currentWeatherData = null;
 let lastUpdateTime = null;
+let isAIAvailable = false;
+let chatOpen = true;
 
 // Add click event to each city in the panel
 cities.forEach((city) => {
@@ -50,6 +62,24 @@ form.addEventListener('submit', (e) => {
     e.preventDefault();
 });
 
+// Chat toggle functionality
+chatToggle.addEventListener('click', () => {
+    chatOpen = !chatOpen;
+    chatContainer.classList.toggle('collapsed', !chatOpen);
+    const icon = chatToggle.querySelector('i');
+    icon.className = chatOpen ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+});
+
+// Chat form submission
+chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = chatInput.value.trim();
+    if (message) {
+        await sendChatMessage(message);
+        chatInput.value = '';
+    }
+});
+
 // Enhanced date parsing function that handles edge cases
 function dayOfTheWeek(day, month, year) {
     const weekday = [
@@ -58,7 +88,6 @@ function dayOfTheWeek(day, month, year) {
     ];
     
     try {
-        // Handle different date formats more robustly
         const date = new Date(year, month - 1, day);
         return weekday[date.getDay()];
     } catch (error) {
@@ -76,6 +105,7 @@ async function fetchWeatherData() {
         temp.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         conditionOutput.innerHTML = "Loading weather...";
         nameOutput.innerHTML = "Searching...";
+        updateInsightsLoading();
         
         const response = await fetch(`${API_BASE_URL}/weather/simple/${encodeURIComponent(cityInput)}`);
         
@@ -111,7 +141,6 @@ async function fetchWeatherData() {
             const d = parseInt(date.substr(8, 2));
             const time = date.substr(11) || "00:00";
             
-            // Enhanced date formatting with better error handling
             const dayName = dayOfTheWeek(d, m, y);
             dateOutput.innerHTML = `${dayName} ${d}/${m}/${y}`;
             timeOutput.innerHTML = time;
@@ -123,7 +152,6 @@ async function fetchWeatherData() {
             timeOutput.innerHTML = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         }
         
-        // Add the name of the city
         nameOutput.innerHTML = data.location.name;
         
         // FIXED ICON HANDLING - Use correct day/night paths
@@ -131,27 +159,21 @@ async function fetchWeatherData() {
         const iconUrl = data.current.condition.icon;
         
         if (iconUrl.includes("cdn.weatherapi.com")) {
-            // Extract icon filename from WeatherAPI URL
             const iconId = iconUrl.split("/").pop();
-            // Use the correct day/night path structure
             icon.src = `./icons/${timeOfDay}/${iconId}`;
             
-            // Add error handler for missing icons
             icon.onerror = () => {
                 console.warn(`Icon not found: ./icons/${timeOfDay}/${iconId}, trying fallback`);
-                // Try opposite time of day
                 const fallbackTime = timeOfDay === "day" ? "night" : "day";
                 icon.src = `./icons/${fallbackTime}/${iconId}`;
                 
-                // If that fails too, use default
                 icon.onerror = () => {
                     console.warn("Using default icon");
                     icon.src = "./icons/day/113.png";
-                    icon.onerror = null; // Prevent infinite loop
+                    icon.onerror = null;
                 };
             };
         } else {
-            // Fallback to default icon
             icon.src = `./icons/${timeOfDay}/113.png`;
         }
         
@@ -163,9 +185,11 @@ async function fetchWeatherData() {
         const code = data.current.condition.code; 
         updateAppTheme(code, timeOfDay);
         
-        // Display enhanced analysis if available
+        // Display enhanced analysis in UI
         if (data.analysis) {
-            displayWeatherInsights(data.analysis);
+            displayWeatherInsightsUI(data.analysis);
+        } else {
+            updateInsightsContent("No detailed analysis available for this location.");
         }
         
         app.style.opacity = "1";
@@ -177,18 +201,165 @@ async function fetchWeatherData() {
     }
 }
 
-// New function to handle errors more gracefully
+// New function to update insights loading state
+function updateInsightsLoading() {
+    insightsContent.innerHTML = '<p class="loading-insights">🔄 Analyzing weather data...</p>';
+}
+
+// New function to display weather insights in the UI
+function displayWeatherInsightsUI(analysis) {
+    let html = '';
+    
+    // Comfort Level
+    if (analysis.comfort_level) {
+        html += `
+            <div class="insight-item comfort">
+                <div class="insight-title">🌡️ Comfort Level</div>
+                <div>${analysis.comfort_level}</div>
+            </div>
+        `;
+    }
+    
+    // Recommendations
+    if (analysis.recommendations && analysis.recommendations.length > 0) {
+        html += `
+            <div class="insight-item recommendation">
+                <div class="insight-title">💡 Recommendations</div>
+                <ul class="insight-list">
+                    ${analysis.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    // Activities
+    if (analysis.activities && analysis.activities.length > 0) {
+        html += `
+            <div class="insight-item activity">
+                <div class="insight-title">🎯 Suggested Activities</div>
+                <ul class="insight-list">
+                    ${analysis.activities.map(activity => `<li>${activity}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    // Alerts
+    if (analysis.alerts && analysis.alerts.length > 0) {
+        html += `
+            <div class="insight-item alert">
+                <div class="insight-title">⚠️ Weather Alerts</div>
+                <ul class="insight-list">
+                    ${analysis.alerts.map(alert => `<li>${alert}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    // Air Quality
+    if (analysis.air_quality && analysis.air_quality.level) {
+        html += `
+            <div class="insight-item air-quality">
+                <div class="insight-title">🌬️ Air Quality</div>
+                <div>${analysis.air_quality.level} - ${analysis.air_quality.advice}</div>
+            </div>
+        `;
+    }
+    
+    insightsContent.innerHTML = html || '<p class="loading-insights">No detailed insights available.</p>';
+}
+
+// New function to update insights content
+function updateInsightsContent(content) {
+    insightsContent.innerHTML = `<p class="loading-insights">${content}</p>`;
+}
+
+// New function to send chat messages
+async function sendChatMessage(message) {
+    // Add user message to chat
+    addMessageToChat(message, 'user');
+    
+    // Add typing indicator
+    addTypingIndicator();
+    
+    try {
+        const response = await chatWithAddy(message, cityInput);
+        
+        // Remove typing indicator
+        removeTypingIndicator();
+        
+        if (response.status === 'success') {
+            // Add AI response to chat
+            addMessageToChat(response.response, 'ai');
+            
+            // Update AI status indicator
+            aiStatus.textContent = response.ai_powered ? '🤖 AI' : '⚡ Enhanced';
+            aiStatus.title = response.ai_powered ? 'Full AI Powered' : 'Enhanced Analysis';
+        } else {
+            addMessageToChat('Sorry, I encountered an error. Please try again.', 'ai');
+        }
+    } catch (error) {
+        removeTypingIndicator();
+        addMessageToChat('Sorry, I\'m having trouble connecting. Please try again.', 'ai');
+        console.error('Chat error:', error);
+    }
+}
+
+// New function to add messages to chat
+function addMessageToChat(text, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">${sender === 'ai' ? '🤖' : '👤'}</div>
+        <div class="message-content">
+            <span class="message-text">${text}</span>
+            <span class="message-time">${timeStr}</span>
+        </div>
+    `;
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// New function to add typing indicator
+function addTypingIndicator() {
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'message ai-message typing-indicator-message';
+    typingDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(typingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// New function to remove typing indicator
+function removeTypingIndicator() {
+    const typingIndicator = chatMessages.querySelector('.typing-indicator-message');
+    if (typingIndicator) {
+        typingIndicator.remove();
+    }
+}
+
+// Enhanced error handling function
 function handleWeatherError(error) {
     temp.innerHTML = "N/A";
     conditionOutput.innerHTML = "Unable to load weather data";
     nameOutput.innerHTML = cityInput;
     
-    // Better error date/time handling
     const now = new Date();
     dateOutput.innerHTML = now.toLocaleDateString();
     timeOutput.innerHTML = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
-    // Enhanced error message logic
     let errorMsg = `Unable to fetch weather data for "${cityInput}".`;
     
     if (error.message.includes('Network')) {
@@ -201,6 +372,7 @@ function handleWeatherError(error) {
         errorMsg += ' Please try again later.';
     }
     
+    updateInsightsContent(`❌ ${errorMsg}`);
     alert(errorMsg);
     app.style.opacity = "1";
 }
@@ -208,26 +380,16 @@ function handleWeatherError(error) {
 // Keep your existing updateAppTheme function exactly as is
 function updateAppTheme(code, timeOfDay) {
     if(code == 1000) { 
-        // Clear weather
         app.style.backgroundImage = `url(./images/${timeOfDay}/clear.jpg)`;
         btn.style.background = "#e5ba92";
         if(timeOfDay == "night") {
             btn.style.background = "#181e27";
         }
     }
-    // Cloudy weather
     else if (
-        code == 1003 ||
-        code == 1006 ||
-        code == 1009 ||
-        code == 1030 ||
-        code == 1069 ||
-        code == 1087 ||
-        code == 1135 ||
-        code == 1273 ||
-        code == 1276 ||
-        code == 1279 ||
-        code == 1282
+        code == 1003 || code == 1006 || code == 1009 || code == 1030 ||
+        code == 1069 || code == 1087 || code == 1135 || code == 1273 ||
+        code == 1276 || code == 1279 || code == 1282
     ) {
         app.style.backgroundImage = `url(./images/${timeOfDay}/cloudy.jpg)`;
         btn.style.background = "#fa6d1b";
@@ -235,26 +397,12 @@ function updateAppTheme(code, timeOfDay) {
             btn.style.background = "#181e27";
         }
     }
-    // Rainy weather
     else if (
-        code == 1063 ||
-        code == 1069 ||
-        code == 1072 ||
-        code == 1150 ||
-        code == 1153 ||
-        code == 1180 ||
-        code == 1183 ||
-        code == 1186 ||
-        code == 1189 ||
-        code == 1192 ||
-        code == 1195 ||
-        code == 1204 ||
-        code == 1207 ||
-        code == 1240 ||
-        code == 1243 ||
-        code == 1246 ||
-        code == 1249 ||
-        code == 1252 
+        code == 1063 || code == 1069 || code == 1072 || code == 1150 ||
+        code == 1153 || code == 1180 || code == 1183 || code == 1186 ||
+        code == 1189 || code == 1192 || code == 1195 || code == 1204 ||
+        code == 1207 || code == 1240 || code == 1243 || code == 1246 ||
+        code == 1249 || code == 1252 
     ) {
         app.style.backgroundImage = `url(./images/${timeOfDay}/rainy.jpg)`;
         btn.style.background = "#647d75";
@@ -262,44 +410,12 @@ function updateAppTheme(code, timeOfDay) {
             btn.style.background = "#325c80";
         }
     }
-    // Snow and other conditions
     else {
         app.style.backgroundImage = `url(./images/${timeOfDay}/snowy.jpg)`;
         btn.style.background = "#4d72aa";
         if(timeOfDay == "night") {
             btn.style.background = "#1b1b1b";
         }
-    }
-}
-
-// New function to display weather insights (logs only, no UI changes)
-function displayWeatherInsights(analysis) {
-    console.log('🎯 Weather Analysis Received:');
-    console.log(`   Comfort Level: ${analysis.comfort_level}`);
-    
-    if (analysis.recommendations && analysis.recommendations.length > 0) {
-        console.log('💡 Recommendations:');
-        analysis.recommendations.forEach((rec, index) => {
-            console.log(`   ${index + 1}. ${rec}`);
-        });
-    }
-    
-    if (analysis.activities && analysis.activities.length > 0) {
-        console.log('🎯 Suggested Activities:');
-        analysis.activities.forEach((activity, index) => {
-            console.log(`   ${index + 1}. ${activity}`);
-        });
-    }
-    
-    if (analysis.alerts && analysis.alerts.length > 0) {
-        console.warn('⚠️ Weather Alerts:');
-        analysis.alerts.forEach((alert, index) => {
-            console.warn(`   ${index + 1}. ${alert}`);
-        });
-    }
-    
-    if (analysis.air_quality && analysis.air_quality.level) {
-        console.log(`🌬️ Air Quality: ${analysis.air_quality.level} - ${analysis.air_quality.advice}`);
     }
 }
 
@@ -326,13 +442,6 @@ async function chatWithAddy(message, location = null) {
         const data = await response.json();
         console.log('🤖 Addy response:', data);
         
-        // Show if AI-powered or fallback
-        if (data.ai_powered) {
-            console.log('🧠 Response powered by: Full AI');
-        } else {
-            console.log('⚡ Response powered by: Enhanced analysis');
-        }
-        
         return data;
         
     } catch (error) {
@@ -349,7 +458,6 @@ async function initializeApp() {
     console.log("🚀 Initializing Addy Weather Monitor v3.0...");
     
     try {
-        // Enhanced health check with timeout
         const healthResponse = await Promise.race([
             fetch(`${API_BASE_URL}/health`),
             new Promise((_, reject) => 
@@ -360,56 +468,52 @@ async function initializeApp() {
         const healthData = await healthResponse.json();
         console.log("✅ API Health Check:", healthData);
         
-        // Display enhanced app info
+        // Update AI status in UI
+        isAIAvailable = healthData.ai_available;
+        aiStatus.textContent = isAIAvailable ? '🤖 AI' : '⚡ Enhanced';
+        aiStatus.title = isAIAvailable ? 'Full AI Powered' : 'Enhanced Analysis';
+        
         if (healthData.app_name) {
             console.log(`📱 ${healthData.app_name} v${healthData.version || '3.0'}`);
             console.log(`🤖 AI Mode: ${healthData.ai_mode}`);
             
             if (healthData.ai_available) {
                 console.log("🧠 Full AI capabilities active!");
-                console.log("💬 Try typing 'A' to test AI chat");
+                addMessageToChat("Hi! I'm Addy with full AI capabilities. Ask me anything about weather!", 'ai');
             } else if (healthData.enhanced_analysis) {
                 console.log("⚡ Enhanced analysis available");
+                addMessageToChat("Hi! I'm Addy with enhanced weather analysis. How can I help you?", 'ai');
+            } else {
+                addMessageToChat("Hi! I'm Addy in basic mode. I can help with weather data!", 'ai');
             }
-            
-            console.log(`🛠️ Capabilities:`, healthData.capabilities);
-        }
-        
-        // Check AI status specifically
-        try {
-            const aiResponse = await fetch(`${API_BASE_URL}/ai-status`);
-            const aiData = await aiResponse.json();
-            console.log("🤖 AI Status:", aiData);
-        } catch (e) {
-            console.log("⚠️ AI status check failed");
         }
         
     } catch (error) {
         console.warn("⚠️ API health check failed:", error.message);
-        console.log("📡 Proceeding with weather data fetch...");
+        aiStatus.textContent = '❌ Offline';
+        aiStatus.title = 'Service unavailable';
+        addMessageToChat("I'm having trouble connecting to my AI services, but I can still help with basic weather data!", 'ai');
     }
     
     // Load initial weather data
     fetchWeatherData();
     
-    // Set up periodic refresh (every 10 minutes) with user-friendly logging
+    // Set up periodic refresh (every 10 minutes)
     setInterval(() => {
         console.log("🔄 Auto-refreshing weather data...");
         fetchWeatherData();
-    }, 600000); // 10 minutes
+    }, 600000);
     
     console.log("⏰ Auto-refresh enabled (every 10 minutes)");
 }
 
 // Enhanced keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    // Press 'R' to refresh weather
     if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.altKey && !e.metaKey) {
         console.log("🔄 Manual refresh triggered via keyboard");
         fetchWeatherData();
     }
     
-    // Press 'C' to show current weather data in console
     if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.altKey && !e.metaKey) {
         if (currentWeatherData) {
             console.log("📊 Current Weather Data:", currentWeatherData);
@@ -419,34 +523,28 @@ document.addEventListener('keydown', (e) => {
         }
     }
     
-    // Press 'A' to test chat with Addy
     if ((e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        chatWithAddy(`What's the weather like in ${cityInput}?`, cityInput)
-            .then(response => {
-                console.log("🤖 Addy says:", response.response || response.error_message);
-            });
+        if (!chatOpen) {
+            chatToggle.click();
+        }
+        chatInput.focus();
     }
 });
 
 // Enhanced utility functions for debugging
 window.addyWeather = {
-    // Existing functions
     fetchWeatherData,
     chatWithAddy,
     updateAppTheme,
     currentCity: () => cityInput,
-    
-    // New debugging functions
     getCurrentData: () => currentWeatherData,
     getLastUpdate: () => lastUpdateTime,
     setCity: (city) => {
         cityInput = city;
         fetchWeatherData();
     },
-    testChat: (message) => chatWithAddy(message, cityInput),
+    testChat: (message) => sendChatMessage(message),
     refreshNow: () => fetchWeatherData(),
-    
-    // AI-specific functions
     checkAI: async () => {
         try {
             const response = await fetch(`${API_BASE_URL}/ai-status`);
@@ -458,8 +556,6 @@ window.addyWeather = {
             return null;
         }
     },
-    
-    // Health check function
     checkHealth: async () => {
         try {
             const response = await fetch(`${API_BASE_URL}/health`);
@@ -482,8 +578,7 @@ console.log("   addyWeather.refreshNow() - Manual refresh");
 console.log("   addyWeather.testChat('Hello') - Test AI chat");
 console.log("   addyWeather.checkAI() - Check AI status");
 console.log("   addyWeather.checkHealth() - API health check");
-console.log("   addyWeather.getCurrentData() - Current weather data");
 console.log("🎹 Keyboard Shortcuts:");
 console.log("   R - Refresh weather");
 console.log("   C - Show current data");
-console.log("   A - Test AI chat");
+console.log("   A - Open chat and focus input");

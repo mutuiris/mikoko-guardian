@@ -279,7 +279,7 @@ async def serve_icon_smart(icon_name: str):
 async def serve_icon_specific(time_of_day: str, icon_name: str):
     """Serve specific day/night icons"""
     if time_of_day not in ["day", "night"]:
-        time_of_day = "day"
+        raise HTTPException(status_code=400, detail="Invalid time of day")
     
     icon_file = client_dir / "icons" / time_of_day / icon_name
     if icon_file.exists():
@@ -302,7 +302,7 @@ async def serve_images(file_path: str):
 @app.get("/{file_path:path}")
 async def serve_static_files(file_path: str):
     if ".." in file_path or file_path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=403, detail="Access denied")
     
     file_location = client_dir / file_path
     if file_location.exists() and file_location.is_file():
@@ -313,7 +313,7 @@ async def serve_static_files(file_path: str):
 # Run the app
 if __name__ == "__main__":
     import uvicorn
-    
+        
     print("=" * 60)
     print("🌤️  ADDY WEATHER MONITOR v3.0 - FULL AI")
     print("=" * 60)

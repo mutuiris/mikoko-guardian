@@ -110,3 +110,6 @@ def chat_with_addy(message: str, location: Optional[str] = None) -> Dict:
             "status": "error",
             "error_message": f"Agent error: {str(e)}"
         }
+
+
+agent = addy_agent
