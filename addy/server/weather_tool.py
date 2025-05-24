@@ -33,10 +33,9 @@ def fetch_weather_data(location: str) -> Dict:
         params = {
             "key": Config.WEATHER_API_KEY,
             "q": location.strip(),
-            "aqi": "yes"  # Include air quality data for environmental monitoring
+            "aqi": "yes"
         }
         
-        # Make API request
         response = requests.get(Config.WEATHER_API_BASE_URL, params=params, timeout=Config.API_TIMEOUT_SECONDS)
         response.raise_for_status()
         
@@ -98,7 +97,6 @@ def fetch_weather_data(location: str) -> Dict:
                 "gb_defra_index": data["current"]["air_quality"].get("gb-defra-index", "N/A")
             }
         
-        # Add environmental analysis for mangrove monitoring
         weather_info["mangrove_environmental_assessment"] = analyze_mangrove_conditions(weather_info)
         
         return weather_info
