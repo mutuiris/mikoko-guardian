@@ -6,7 +6,7 @@ from .config import Config
 
 def fetch_weather_data(location: str) -> Dict:
     """
-    Fetches current weather data for a specified location to inform environmental monitoring decisions.
+    Fetches current weather data for a specified location.
     
     Args:
         location (str): City name or coordinates for weather data retrieval.
@@ -97,8 +97,6 @@ def fetch_weather_data(location: str) -> Dict:
                 "gb_defra_index": data["current"]["air_quality"].get("gb-defra-index", "N/A")
             }
         
-        weather_info["mangrove_environmental_assessment"] = analyze_mangrove_conditions(weather_info)
-        
         return weather_info
         
     except requests.exceptions.RequestException as e:
@@ -122,77 +120,16 @@ def fetch_weather_data(location: str) -> Dict:
             "error_message": f"Location '{location}' not found or weather data unavailable."
         }
 
-def analyze_mangrove_conditions(weather_data: Dict) -> Dict:
-    """
-    Analyzes weather conditions specifically for mangrove ecosystem monitoring.
-    
-    Args:
-        weather_data (Dict): Current weather data
-        
-    Returns:
-        Dict: Environmental assessment for mangrove health
-    """
-    try:
-        temp = weather_data["current_conditions"]["temperature_celsius"]
-        humidity = weather_data["current_conditions"]["humidity_percent"]
-        precipitation = weather_data["environmental_indicators"]["precipitation_mm"]
-        wind_speed = weather_data["current_conditions"]["wind"]["speed_kph"]
-        
-        assessment = {
-            "temperature_suitability": "optimal" if 20 <= temp <= 35 else "suboptimal" if temp < 20 or temp > 35 else "stress_conditions",
-            "humidity_status": "ideal" if humidity >= 60 else "low" if humidity >= 40 else "very_low",
-            "precipitation_level": "high" if precipitation > 5 else "moderate" if precipitation > 1 else "low",
-            "wind_conditions": "calm" if wind_speed < 10 else "moderate" if wind_speed < 25 else "strong",
-            "overall_conditions": "favorable",
-            "recommendations": []
-        }
-        
-        # Generate recommendations based on conditions
-        if temp > 35:
-            assessment["recommendations"].append("Monitor for heat stress in mangrove vegetation")
-        if temp < 20:
-            assessment["recommendations"].append("Cold conditions may affect mangrove growth")
-        if humidity < 40:
-            assessment["recommendations"].append("Low humidity may stress mangrove ecosystems")
-        if wind_speed > 25:
-            assessment["recommendations"].append("Strong winds may cause physical damage to mangrove structures")
-        if precipitation > 10:
-            assessment["recommendations"].append("Heavy rainfall may cause flooding and sedimentation")
-        
-        # Determine overall conditions
-        stress_factors = sum([
-            temp > 35 or temp < 20,
-            humidity < 40,
-            wind_speed > 25,
-            precipitation > 15
-        ])
-        
-        if stress_factors == 0:
-            assessment["overall_conditions"] = "excellent"
-        elif stress_factors <= 1:
-            assessment["overall_conditions"] = "good"
-        elif stress_factors <= 2:
-            assessment["overall_conditions"] = "fair"
-        else:
-            assessment["overall_conditions"] = "challenging"
-            
-        return assessment
-        
-    except Exception as e:
-        return {
-            "error": f"Could not analyze mangrove conditions: {str(e)}"
-        }
-
 def get_weather_forecast(location: str, days: int = 3) -> Dict:
     """
-    Fetches weather forecast data for environmental planning.
+    Fetches weather forecast data for planning.
     
     Args:
         location (str): Location for forecast
         days (int): Number of days for forecast (1-10)
         
     Returns:
-        Dict: Forecast data for environmental monitoring
+        Dict: Forecast data
     """
     try:
         if not Config.WEATHER_API_KEY:
@@ -235,8 +172,7 @@ def get_weather_forecast(location: str, days: int = 3) -> Dict:
                 "total_precipitation_mm": day["day"]["totalprecip_mm"],
                 "max_wind_kph": day["day"]["maxwind_kph"],
                 "condition": day["day"]["condition"]["text"],
-                "uv_index": day["day"]["uv"],
-                "mangrove_suitability": "good" if 20 <= day["day"]["avgtemp_c"] <= 35 and day["day"]["avghumidity"] >= 60 else "moderate"
+                "uv_index": day["day"]["uv"]
             }
             forecast_info["daily_forecasts"].append(day_info)
             
