@@ -19,21 +19,25 @@ except ImportError as e:
     print(f"Config import error: {e}")
     sys.exit(1)
 
-# Import weather tool
+# Import weather tools and enhanced agent
 try:
     from weather_tool import fetch_weather_data, get_weather_forecast
+    from enhanced_weather_agent import enhanced_addy, chat_with_enhanced_addy, get_enhanced_weather_analysis
 except ImportError as e:
-    print(f"Weather tool import error: {e}")
-    sys.exit(1)
+    print(f"Import error: {e}")
+    # Fallback to basic functionality
+    enhanced_addy = None
+    chat_with_enhanced_addy = None
+    get_enhanced_weather_analysis = None
 
 # Create FastAPI app
 app = FastAPI(
-    title="Addy Weather Monitor",
-    description="Weather monitoring API with AI assistant",
-    version="1.0.0"
+    title="Addy Weather Monitor v2.0",
+    description="Enhanced weather monitoring API with intelligent AI assistant",
+    version="2.0.0"
 )
 
-# Add CORS middleware - Allow frontend on port 3000
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "*"],
@@ -45,7 +49,7 @@ app.add_middleware(
 # Get the client directory path
 client_dir = current_dir.parent / "client"
 
-# Pydantic models for request bodies
+# Pydantic models
 class ChatRequest(BaseModel):
     message: str
     location: Optional[str] = None
@@ -53,31 +57,49 @@ class ChatRequest(BaseModel):
 class WeatherRequest(BaseModel):
     location: str
 
-# API ROUTES FIRST (more specific routes come first)
+# API ROUTES
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint"""
+    """Enhanced health check endpoint"""
     config_info = Config.get_config_info()
     return {
         "status": "healthy",
         "app_name": config_info["app_name"],
-        "version": config_info["app_version"],
-        "weather_api_configured": config_info["weather_api_configured"]
+        "version": "2.0.0",
+        "agent_version": enhanced_addy.version if enhanced_addy else "1.0",
+        "weather_api_configured": config_info["weather_api_configured"],
+        "capabilities": enhanced_addy.capabilities if enhanced_addy else ["Basic weather data"],
+        "enhanced_agent": enhanced_addy is not None
     }
 
-# Simple weather endpoint that matches your frontend format
 @app.get("/api/weather/simple/{location}")
 async def get_simple_weather(location: str):
-    """Get weather data in format compatible with existing frontend"""
+    """Get weather data with enhanced analysis"""
     try:
-        print(f"API: Fetching simple weather for: {location}")  # Debug log
+        print(f"🌤️ API: Fetching enhanced weather for: {location}")
         weather_data = fetch_weather_data(location)
         
         if weather_data["status"] == "error":
-            print(f"Weather error: {weather_data['error_message']}")
+            print(f"❌ Weather error: {weather_data['error_message']}")
             raise HTTPException(status_code=400, detail=weather_data["error_message"])
         
-        # Format data to match your existing frontend expectations
+        # Get enhanced analysis if available
+        analysis = None
+        if enhanced_addy:
+            try:
+                analysis_result = enhanced_addy.analyze_weather_comprehensive(weather_data)
+                analysis = {
+                    "comfort_level": analysis_result.comfort_level,
+                    "recommendations": analysis_result.recommendations[:3],
+                    "activities": analysis_result.activities[:3],
+                    "alerts": analysis_result.alerts,
+                    "summary": analysis_result.summary,
+                    "air_quality": analysis_result.air_quality_info
+                }
+            except Exception as e:
+                print(f"⚠️ Analysis error: {e}")
+        
+        # Format data for frontend
         simplified = {
             "location": {
                 "name": weather_data["location"]["name"],
@@ -97,32 +119,76 @@ async def get_simple_weather(location: str):
             }
         }
         
-        print(f"Returning simplified data for {location}")  # Debug log
+        # Add analysis if available
+        if analysis:
+            simplified["analysis"] = analysis
+        
+        print(f"✅ Returning enhanced data for {location}")
         return simplified
         
     except Exception as e:
-        print(f"Exception in get_simple_weather: {str(e)}")
+        print(f"💥 Exception in get_simple_weather: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/weather/analysis/{location}")
+async def get_weather_analysis(location: str):
+    """Get comprehensive weather analysis"""
+    try:
+        if not enhanced_addy:
+            raise HTTPException(status_code=503, detail="Enhanced analysis not available")
+        
+        result = get_enhanced_weather_analysis(location)
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["error_message"])
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat")
+async def chat_endpoint(request: ChatRequest):
+    """Enhanced chat with Addy agent"""
+    try:
+        if not request.message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        print(f"💬 Chat request: '{request.message}' for {request.location}")
+        
+        if chat_with_enhanced_addy:
+            response = chat_with_enhanced_addy(request.message, request.location)
+        else:
+            # Fallback response
+            response = {
+                "status": "success",
+                "response": f"Hello! I'm Addy, your weather assistant. You asked: '{request.message}'. Enhanced AI features are currently unavailable, but I can still help with weather data!",
+                "location": request.location
+            }
+        
+        if response["status"] == "error":
+            raise HTTPException(status_code=500, detail=response.get("error_message", "Unknown error"))
+        
+        print(f"🤖 Chat response generated successfully")
+        return response
+        
+    except Exception as e:
+        print(f"💥 Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/weather/{location}")
 async def get_weather(location: str):
-    """Get current weather data for a location"""
+    """Get complete weather data"""
     try:
-        print(f"API: Fetching weather for: {location}")  # Debug log
         weather_data = fetch_weather_data(location)
-        
         if weather_data["status"] == "error":
-            print(f"Weather API error: {weather_data['error_message']}")
             raise HTTPException(status_code=400, detail=weather_data["error_message"])
-        
         return weather_data
     except Exception as e:
-        print(f"Exception in get_weather: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/forecast/{location}")
 async def get_forecast(location: str, days: int = 3):
-    """Get weather forecast for a location"""
+    """Get weather forecast"""
     try:
         forecast_data = get_weather_forecast(location, days)
         if forecast_data["status"] == "error":
@@ -131,38 +197,17 @@ async def get_forecast(location: str, days: int = 3):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
-    """Chat with Addy agent"""
-    try:
-        if not request.message:
-            raise HTTPException(status_code=400, detail="Message is required")
-        
-        # For now, return a simple response since Google AI might not be available
-        return {
-            "status": "success",
-            "response": f"Weather assistant here! You asked: '{request.message}'. I'm currently focusing on weather data for {request.location if request.location else 'your location'}.",
-            "location": request.location
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# STATIC FILE ROUTES (these come after API routes)
-# Mount static files from client directory
+# STATIC FILE ROUTES
 if client_dir.exists():
     app.mount("/static", StaticFiles(directory=client_dir), name="static")
 
-# Serve the main HTML file
 @app.get("/")
 async def read_root():
-    """Serve the main HTML file"""
     html_file = client_dir / "index.html"
     if html_file.exists():
         return FileResponse(html_file)
     raise HTTPException(status_code=404, detail="HTML file not found")
 
-# Serve specific static files
 @app.get("/style.css")
 async def serve_css():
     css_file = client_dir / "style.css"
@@ -177,7 +222,6 @@ async def serve_js():
         return FileResponse(js_file)
     raise HTTPException(status_code=404, detail="JS file not found")
 
-# Serve icons directory
 @app.get("/icons/{file_path:path}")
 async def serve_icons(file_path: str):
     icon_file = client_dir / "icons" / file_path
@@ -185,7 +229,6 @@ async def serve_icons(file_path: str):
         return FileResponse(icon_file)
     raise HTTPException(status_code=404, detail="Icon not found")
 
-# Serve images directory
 @app.get("/images/{file_path:path}")
 async def serve_images(file_path: str):
     image_file = client_dir / "images" / file_path
@@ -193,11 +236,8 @@ async def serve_images(file_path: str):
         return FileResponse(image_file)
     raise HTTPException(status_code=404, detail="Image not found")
 
-# Catch-all for other static files (this should be last)
 @app.get("/{file_path:path}")
 async def serve_static_files(file_path: str):
-    """Serve other static files"""
-    # Prevent serving files outside client directory
     if ".." in file_path or file_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -211,17 +251,21 @@ async def serve_static_files(file_path: str):
 if __name__ == "__main__":
     import uvicorn
     
-    print("=" * 50)
-    print("🌤️  ADDY WEATHER MONITOR")
-    print("=" * 50)
-    print(f"Client directory: {client_dir}")
+    print("=" * 60)
+    print("🌤️  ADDY WEATHER MONITOR v2.0 - ENHANCED")
+    print("=" * 60)
+    print(f"🤖 Agent: {enhanced_addy.name if enhanced_addy else 'Basic'} v{enhanced_addy.version if enhanced_addy else '1.0'}")
+    print(f"📁 Client: {client_dir}")
+    print(f"🧠 Enhanced AI: {'✅ Enabled' if enhanced_addy else '❌ Basic mode'}")
     
     if Config.validate_config():
         print("✅ Configuration validated successfully")
-        print("🚀 Starting FastAPI server...")
+        print("🚀 Starting enhanced FastAPI server...")
         print("📍 Server: http://localhost:8000")
         print("🌐 API docs: http://localhost:8000/docs")
-        print("-" * 50)
+        print("🔧 Health: http://localhost:8000/api/health")
+        print("💬 Chat: http://localhost:8000/api/chat")
+        print("-" * 60)
         
         uvicorn.run(
             "main:app", 
@@ -230,4 +274,4 @@ if __name__ == "__main__":
             reload=Config.DEBUG_MODE
         )
     else:
-        print("❌ Configuration validation failed. Please check your .env file.")
+        print("Configuration validation failed. Please check your .env file.")
