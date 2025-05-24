@@ -7,6 +7,7 @@ from typing import Optional
 import os
 import sys
 from pathlib import Path
+import asyncio
 
 # Add the current directory to Python path for imports
 current_dir = Path(__file__).parent
@@ -19,22 +20,30 @@ except ImportError as e:
     print(f"Config import error: {e}")
     sys.exit(1)
 
-# Import weather tools and enhanced agent
+# Import weather tools and agents
 try:
     from weather_tool import fetch_weather_data, get_weather_forecast
     from enhanced_weather_agent import enhanced_addy, chat_with_enhanced_addy, get_enhanced_weather_analysis
 except ImportError as e:
-    print(f"Import error: {e}")
-    # Fallback to basic functionality
+    print(f"Enhanced agent import error: {e}")
     enhanced_addy = None
     chat_with_enhanced_addy = None
     get_enhanced_weather_analysis = None
 
+# Import AI agent
+try:
+    from ai_agent import chat_with_ai_addy, get_ai_capabilities, ai_addy
+    AI_AGENT_AVAILABLE = True
+    print("✅ Full AI agent imported successfully")
+except ImportError as e:
+    print(f"⚠️ Full AI agent not available: {e}")
+    AI_AGENT_AVAILABLE = False
+
 # Create FastAPI app
 app = FastAPI(
-    title="Addy Weather Monitor v2.0",
-    description="Enhanced weather monitoring API with intelligent AI assistant",
-    version="2.0.0"
+    title="Addy Weather Monitor v3.0",
+    description="Full AI-powered weather monitoring with intelligent assistant",
+    version="3.0.0"
 )
 
 # Add CORS middleware
@@ -62,15 +71,32 @@ class WeatherRequest(BaseModel):
 async def health_check():
     """Enhanced health check endpoint"""
     config_info = Config.get_config_info()
+    
+    ai_status = "Full AI" if AI_AGENT_AVAILABLE else "Enhanced Analysis" if enhanced_addy else "Basic"
+    
     return {
         "status": "healthy",
         "app_name": config_info["app_name"],
-        "version": "2.0.0",
-        "agent_version": enhanced_addy.version if enhanced_addy else "1.0",
+        "version": "3.0.0",
+        "ai_mode": ai_status,
+        "ai_available": AI_AGENT_AVAILABLE,
+        "enhanced_analysis": enhanced_addy is not None,
         "weather_api_configured": config_info["weather_api_configured"],
-        "capabilities": enhanced_addy.capabilities if enhanced_addy else ["Basic weather data"],
-        "enhanced_agent": enhanced_addy is not None
+        "google_api_configured": config_info["google_api_configured"],
+        "capabilities": get_ai_capabilities()["features"] if AI_AGENT_AVAILABLE else (enhanced_addy.capabilities if enhanced_addy else ["Basic weather data"])
     }
+
+@app.get("/api/ai-status")
+async def ai_status():
+    """Get AI capabilities status"""
+    if AI_AGENT_AVAILABLE:
+        return get_ai_capabilities()
+    else:
+        return {
+            "ai_available": False,
+            "message": "Full AI capabilities not available",
+            "fallback_mode": "Enhanced weather analysis" if enhanced_addy else "Basic mode"
+        }
 
 @app.get("/api/weather/simple/{location}")
 async def get_simple_weather(location: str):
@@ -130,6 +156,39 @@ async def get_simple_weather(location: str):
         print(f"💥 Exception in get_simple_weather: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/chat")
+async def chat_endpoint(request: ChatRequest):
+    """Full AI-powered chat with Addy agent"""
+    try:
+        if not request.message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        print(f"💬 AI Chat request: '{request.message}' for {request.location}")
+        
+        if AI_AGENT_AVAILABLE:
+            # Use full AI capabilities
+            response = await chat_with_ai_addy(request.message, request.location)
+            print(f"🤖 AI-powered response generated")
+        elif chat_with_enhanced_addy:
+            # Use enhanced analysis
+            response = chat_with_enhanced_addy(request.message, request.location)
+            response["ai_powered"] = False
+            print(f"🧠 Enhanced analysis response generated")
+        else:
+            # Basic fallback
+            response = {
+                "status": "success",
+                "response": f"Hello! I'm Addy. You asked: '{request.message}'. I'm currently in basic mode.",
+                "ai_powered": False,
+                "location": request.location
+            }
+        
+        return response
+        
+    except Exception as e:
+        print(f"💥 Chat error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/weather/analysis/{location}")
 async def get_weather_analysis(location: str):
     """Get comprehensive weather analysis"""
@@ -144,35 +203,6 @@ async def get_weather_analysis(location: str):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
-    """Enhanced chat with Addy agent"""
-    try:
-        if not request.message:
-            raise HTTPException(status_code=400, detail="Message is required")
-        
-        print(f"💬 Chat request: '{request.message}' for {request.location}")
-        
-        if chat_with_enhanced_addy:
-            response = chat_with_enhanced_addy(request.message, request.location)
-        else:
-            # Fallback response
-            response = {
-                "status": "success",
-                "response": f"Hello! I'm Addy, your weather assistant. You asked: '{request.message}'. Enhanced AI features are currently unavailable, but I can still help with weather data!",
-                "location": request.location
-            }
-        
-        if response["status"] == "error":
-            raise HTTPException(status_code=500, detail=response.get("error_message", "Unknown error"))
-        
-        print(f"🤖 Chat response generated successfully")
-        return response
-        
-    except Exception as e:
-        print(f"💥 Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/weather/{location}")
@@ -222,11 +252,44 @@ async def serve_js():
         return FileResponse(js_file)
     raise HTTPException(status_code=404, detail="JS file not found")
 
-@app.get("/icons/{file_path:path}")
-async def serve_icons(file_path: str):
-    icon_file = client_dir / "icons" / file_path
-    if icon_file.exists() and icon_file.is_file():
+# FIXED ICON SERVING - Handle day/night subfolders
+@app.get("/icons/{icon_name}")
+async def serve_icon_smart(icon_name: str):
+    """Smart icon serving - tries day folder first, then night folder"""
+    icons_dir = client_dir / "icons"
+    
+    # Try day folder first
+    day_icon = icons_dir / "day" / icon_name
+    if day_icon.exists():
+        return FileResponse(day_icon)
+    
+    # Try night folder
+    night_icon = icons_dir / "night" / icon_name
+    if night_icon.exists():
+        return FileResponse(night_icon)
+    
+    # Fallback to default icon
+    default_icon = icons_dir / "day" / "113.png"
+    if default_icon.exists():
+        return FileResponse(default_icon)
+    
+    raise HTTPException(status_code=404, detail="Icon not found")
+
+@app.get("/icons/{time_of_day}/{icon_name}")
+async def serve_icon_specific(time_of_day: str, icon_name: str):
+    """Serve specific day/night icons"""
+    if time_of_day not in ["day", "night"]:
+        time_of_day = "day"
+    
+    icon_file = client_dir / "icons" / time_of_day / icon_name
+    if icon_file.exists():
         return FileResponse(icon_file)
+    
+    # Fallback to day version
+    fallback_icon = client_dir / "icons" / "day" / icon_name
+    if fallback_icon.exists():
+        return FileResponse(fallback_icon)
+    
     raise HTTPException(status_code=404, detail="Icon not found")
 
 @app.get("/images/{file_path:path}")
@@ -252,19 +315,29 @@ if __name__ == "__main__":
     import uvicorn
     
     print("=" * 60)
-    print("🌤️  ADDY WEATHER MONITOR v2.0 - ENHANCED")
+    print("🌤️  ADDY WEATHER MONITOR v3.0 - FULL AI")
     print("=" * 60)
-    print(f"🤖 Agent: {enhanced_addy.name if enhanced_addy else 'Basic'} v{enhanced_addy.version if enhanced_addy else '1.0'}")
+    
+    if AI_AGENT_AVAILABLE:
+        print(f"🤖 Full AI Agent: {ai_addy.name} v{ai_addy.version}")
+        print("🧠 Capabilities: Natural language conversations, context memory, adaptive responses")
+    elif enhanced_addy:
+        print(f"🧠 Enhanced Agent: {enhanced_addy.name} v{enhanced_addy.version}")
+        print("⚡ Capabilities: Advanced weather analysis, recommendations, alerts")
+    else:
+        print("📊 Basic Mode: Weather data only")
+    
     print(f"📁 Client: {client_dir}")
-    print(f"🧠 Enhanced AI: {'✅ Enabled' if enhanced_addy else '❌ Basic mode'}")
+    print(f"🌐 Icons: Fixed day/night folder handling")
     
     if Config.validate_config():
         print("✅ Configuration validated successfully")
-        print("🚀 Starting enhanced FastAPI server...")
+        print("🚀 Starting full AI FastAPI server...")
         print("📍 Server: http://localhost:8000")
         print("🌐 API docs: http://localhost:8000/docs")
         print("🔧 Health: http://localhost:8000/api/health")
-        print("💬 Chat: http://localhost:8000/api/chat")
+        print("💬 AI Chat: http://localhost:8000/api/chat")
+        print("🤖 AI Status: http://localhost:8000/api/ai-status")
         print("-" * 60)
         
         uvicorn.run(
@@ -274,4 +347,4 @@ if __name__ == "__main__":
             reload=Config.DEBUG_MODE
         )
     else:
-        print("Configuration validation failed. Please check your .env file.")
+        print("❌ Configuration validation failed. Please check your .env file.")
